@@ -209,6 +209,29 @@ export default function SignLanguageDetector() {
   const debounceRef = useRef(null);
   const chatEndRef = useRef(null);
   const avatarTimeoutRef = useRef(null);
+  const processFrameRef = useRef(null);
+
+  // Pre-load conversation items
+  const [chatHistory, setChatHistory] = useState([
+    {
+      id: 1,
+      sender: "Maya S.",
+      initial: "M",
+      text: "Hi! I'll be signing today — Easy Mode helps you follow along.",
+      time: "09:41",
+      isSignLanguage: true,
+      translation: "Hi! I will use sign language to speak today. You can read the text below my video to follow along.",
+      isMe: false,
+    },
+    {
+      id: 2,
+      sender: "You",
+      initial: "Y",
+      text: "Perfect, I just turned it on. Ready when you are!",
+      time: "09:41",
+      isMe: true,
+    }
+  ]);
 
   // States
   const [isRunning, setIsRunning] = useState(false);
@@ -217,7 +240,7 @@ export default function SignLanguageDetector() {
   const [camOn, setCamOn] = useState(true);
   const [gesture, setGesture] = useState({ name: "None", confidence: null });
   const [signHistory, setSignHistory] = useState([]);
-  const [stats, setStats] = useState({ count: 0, totalConf: 0, freq: {} });
+
   const [message, setMessage] = useState("");
 
   // Settings & Screenshare States
@@ -384,7 +407,7 @@ You are now ready to communicate. Position your hand clearly in front of the cam
 
         rec.onend = () => {
           if (voiceToTextActiveRef.current && micOnRef.current && isRunningRef.current) {
-            try { rec.start(); } catch (err) {}
+            try { rec.start(); } catch { /* ignore restart errors */ }
           }
         };
 
@@ -393,12 +416,12 @@ You are now ready to communicate. Position your hand clearly in front of the cam
 
       try {
         recognitionRef.current.start();
-      } catch (err) {}
+      } catch { /* ignore start errors */ }
     } else {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
-        } catch (err) {}
+        } catch { /* ignore stop errors */ }
       }
     }
   }, [voiceToTextActive, micOn, isRunning]);
@@ -415,27 +438,7 @@ You are now ready to communicate. Position your hand clearly in front of the cam
     { id: 3, name: "You", initial: "Y", status: "online", activity: youActivity },
   ];
 
-  // Pre-load conversation items
-  const [chatHistory, setChatHistory] = useState([
-    {
-      id: 1,
-      sender: "Maya S.",
-      initial: "M",
-      text: "Hi! I'll be signing today — Easy Mode helps you follow along.",
-      time: "09:41",
-      isSignLanguage: true,
-      translation: "Hi! I will use sign language to speak today. You can read the text below my video to follow along.",
-      isMe: false,
-    },
-    {
-      id: 2,
-      sender: "You",
-      initial: "Y",
-      text: "Perfect, I just turned it on. Ready when you are!",
-      time: "09:41",
-      isMe: true,
-    }
-  ]);
+
 
   // Scroll to bottom of chat
   useEffect(() => {
@@ -526,14 +529,7 @@ You are now ready to communicate. Position your hand clearly in front of the cam
               time,
             }, ...h].slice(0, 10));
 
-            setStats(prev => {
-              const freq = { ...prev.freq, [g.name]: (prev.freq[g.name] || 0) + 1 };
-              return {
-                count: prev.count + 1,
-                totalConf: prev.totalConf + g.confidence,
-                freq
-              };
-            });
+
           }
         } else {
           setGesture({ name: "None", confidence: null });
@@ -543,7 +539,7 @@ You are now ready to communicate. Position your hand clearly in front of the cam
       setGesture({ name: "None", confidence: null });
     }
     ctx.restore();
-  }, [drawHand, camOn, easyMode]);
+  }, [drawHand, camOn]);
 
   // Keep MediaPipe results callback updated with fresh state closures
   useEffect(() => {
@@ -560,7 +556,7 @@ You are now ready to communicate. Position your hand clearly in front of the cam
       try {
         await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js");
       } catch (err) {
-        throw new Error("MediaPipe Hands library failed to load. Please check your internet connection.");
+        throw new Error("MediaPipe Hands library failed to load. Please check your internet connection.", { cause: err });
       }
     }
     
@@ -598,9 +594,16 @@ You are now ready to communicate. Position your hand clearly in front of the cam
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         }
       }
-      rafRef.current = requestAnimationFrame(processFrame);
+      rafRef.current = requestAnimationFrame(() => {
+        processFrameRef.current?.();
+      });
     }
   }, []);
+
+  // Update processFrameRef value dynamically when processFrame changes
+  useEffect(() => {
+    processFrameRef.current = processFrame;
+  }, [processFrame]);
 
   const stopScreenShare = () => {
     if (screenStreamRef.current) {
@@ -775,16 +778,13 @@ You are now ready to communicate. Position your hand clearly in front of the cam
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
       clearTimeout(avatarTimeoutRef.current);
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (err) {}
+        try { recognitionRef.current.stop(); } catch { /* ignore stop failures on unmount */ }
       }
       if ("speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
     };
   }, []);
-
-  /* ── Computed stats ── */
-  const avgConf = stats.count > 0 ? (stats.totalConf / stats.count) : 0.95;
 
   return (
     <div id="root">
