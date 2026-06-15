@@ -210,6 +210,13 @@ export default function SignLanguageDetector() {
   const chatEndRef = useRef(null);
   const avatarTimeoutRef = useRef(null);
   const processFrameRef = useRef(null);
+  const workspaceCardRef = useRef(null);
+
+  // Participant Pinning & Fullscreen States
+  const [pinnedParticipant, setPinnedParticipant] = useState(3); // 3 represents "You"
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [remoteGesture, setRemoteGesture] = useState({ name: "None", confidence: null });
+  const [remoteVoiceText, setRemoteVoiceText] = useState("");
 
   // Pre-load conversation items
   const [chatHistory, setChatHistory] = useState([
@@ -293,6 +300,76 @@ export default function SignLanguageDetector() {
   useEffect(() => {
     camOnRef.current = camOn;
   }, [camOn]);
+
+  // Simulated sign translations for Maya S. when pinned
+  useEffect(() => {
+    if (isRunning && pinnedParticipant === 1) {
+      const gestures = ["Open Hand", "Thumbs Up", "Rock", "Peace", "Pointing Up"];
+      let idx = 0;
+      const interval = setInterval(() => {
+        setRemoteGesture({
+          name: gestures[idx % gestures.length],
+          confidence: 0.85 + Math.random() * 0.12
+        });
+        idx++;
+      }, 5000);
+      return () => clearInterval(interval);
+    } else {
+      const timeout = setTimeout(() => {
+        setRemoteGesture(g => g.name !== "None" ? { name: "None", confidence: null } : g);
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
+  }, [isRunning, pinnedParticipant]);
+
+  // Simulated voice transcriptions for Arjun K. when pinned
+  useEffect(() => {
+    if (isRunning && pinnedParticipant === 2) {
+      const phrases = [
+        "Hey everyone, hope you can hear me clearly.",
+        "Yes, the sign language translations look extremely accurate on my screen.",
+        "Signal is working perfectly for my team.",
+        "I'll be speaking, so Arjun's transcription stream is active."
+      ];
+      let idx = 0;
+      const interval = setInterval(() => {
+        setRemoteVoiceText(phrases[idx % phrases.length]);
+        idx++;
+      }, 6000);
+      return () => clearInterval(interval);
+    } else {
+      const timeout = setTimeout(() => {
+        setRemoteVoiceText(t => t !== "" ? "" : t);
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
+  }, [isRunning, pinnedParticipant]);
+
+  // Sync fullscreen state if changed via Esc key
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!workspaceCardRef.current) return;
+    if (!document.fullscreenElement) {
+      workspaceCardRef.current.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(err => {
+        console.error("Error entering fullscreen:", err);
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      }).catch(err => {
+        console.error("Error exiting fullscreen:", err);
+      });
+    }
+  };
 
   const [isReadingManual, setIsReadingManual] = useState(false);
 
@@ -863,7 +940,7 @@ You are now ready to communicate. Position your hand clearly in front of the cam
       <main className="app-shell">
         {/* LEFT COLUMN: Meeting Call Screen Workspace (Video + Subtitles) */}
         <div className="left-panel">
-          <div className="workspace-card glass-panel call-screen-mode">
+          <div ref={workspaceCardRef} className={`workspace-card glass-panel call-screen-mode ${isFullscreen ? "fullscreen" : ""}`}>
             
             {/* Immersive Video Feed Wrapper */}
             <div className="video-feed-wrapper">
@@ -872,59 +949,143 @@ You are now ready to communicate. Position your hand clearly in front of the cam
               <div className="scanner-corner bottom-left" />
               <div className="scanner-corner bottom-right" />
 
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="video-element"
-                style={{
-                  display: isRunning && camOn ? "block" : "none",
-                  transform: isSharingScreen ? "none" : "scaleX(-1)"
-                }}
-              />
-              <canvas
-                ref={canvasRef}
-                className="video-overlay-canvas"
-                style={{
-                  display: isRunning && camOn ? "block" : "none",
-                  transform: isSharingScreen ? "none" : "scaleX(-1)"
-                }}
-              />
+              {/* Fullscreen Toggle Button */}
+              <button
+                className="fullscreen-toggle-btn"
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Call"}
+                onClick={toggleFullscreen}
+              >
+                {isFullscreen ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                    <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" width={12} height={12}>
+                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                  </svg>
+                )}
+              </button>
 
-              {/* Camera Off Placeholder */}
-              {(!isRunning || !camOn) && (
-                <div className="camera-off-placeholder">
-                  <div className="camera-off-icon-wrap">
-                    <Icon.Camera off={true} />
-                  </div>
-                  <span className="camera-off-title">Call Feed is Muted</span>
-                  <span className="camera-off-subtitle">
-                    {!camOn ? "Your camera is muted. Toggle video on the controls to resume." : "Click Start Call (Play icon) on the floating controls to join."}
-                  </span>
-                </div>
-              )}
+              {pinnedParticipant === 3 ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="video-element"
+                    style={{
+                      display: isRunning && camOn ? "block" : "none",
+                      transform: isSharingScreen ? "none" : "scaleX(-1)"
+                    }}
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    className="video-overlay-canvas"
+                    style={{
+                      display: isRunning && camOn ? "block" : "none",
+                      transform: isSharingScreen ? "none" : "scaleX(-1)"
+                    }}
+                  />
 
-              {/* Floating Gesture overlay badge */}
-              {isRunning && camOn && gesture.name !== "None" && (
-                <div className="gesture-overlay-badge">
-                  <span className="gesture-overlay-icon">
-                    {SIGN_ICONS[gesture.name] ?? "✋"}
-                  </span>
-                  <div className="gesture-overlay-divider" />
-                  <div className="gesture-overlay-info">
-                    <span className="gesture-overlay-label">AI Detected Sign</span>
-                    <span className="gesture-overlay-value">{gesture.name}</span>
+                  {/* Camera Off Placeholder */}
+                  {(!isRunning || !camOn) && (
+                    <div className="camera-off-placeholder">
+                      <div className="camera-off-icon-wrap">
+                        <Icon.Camera off={true} />
+                      </div>
+                      <span className="camera-off-title">Call Feed is Muted</span>
+                      <span className="camera-off-subtitle">
+                        {!camOn ? "Your camera is muted. Toggle video on the controls to resume." : "Click Start Call (Play icon) on the floating controls to join."}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Floating Gesture overlay badge */}
+                  {isRunning && camOn && gesture.name !== "None" && (
+                    <div className="gesture-overlay-badge">
+                      <span className="gesture-overlay-icon">
+                        {SIGN_ICONS[gesture.name] ?? "✋"}
+                      </span>
+                      <div className="gesture-overlay-divider" />
+                      <div className="gesture-overlay-info">
+                        <span className="gesture-overlay-label">AI Detected Sign</span>
+                        <span className="gesture-overlay-value">{gesture.name}</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Remote Pinned Participant View */
+                <div className="remote-participant-view">
+                  <div className="remote-avatar-container">
+                    <div className={`remote-avatar ${pinnedParticipant === 1 ? "m" : "a"}`}>
+                      {pinnedParticipant === 1 ? "M" : "A"}
+                    </div>
+                    <div className="avatar-pulse-ring-1" />
+                    <div className="avatar-pulse-ring-2" />
                   </div>
+                  
+                  {/* Visualizer Waveform */}
+                  <div className="visualizer-container">
+                    <div className="visualizer-bar" style={{ animationDelay: "0.1s" }} />
+                    <div className="visualizer-bar" style={{ animationDelay: "0.3s" }} />
+                    <div className="visualizer-bar" style={{ animationDelay: "0.5s" }} />
+                    <div className="visualizer-bar" style={{ animationDelay: "0.2s" }} />
+                    <div className="visualizer-bar" style={{ animationDelay: "0.4s" }} />
+                  </div>
+
+                  <span className="remote-participant-title">
+                    {pinnedParticipant === 1 ? "Maya S. (Remote Signer)" : "Arjun K. (Remote Speaker)"}
+                  </span>
+                  <span className="remote-participant-subtitle">
+                    {pinnedParticipant === 1 
+                      ? "Pin-Focused • Active Sign Translation Stream" 
+                      : "Pin-Focused • Active Voice Transcription Stream"}
+                  </span>
+                  
+                  <div className="remote-pin-indicator">
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
+                    </svg>
+                    <span>Pinned Feed</span>
+                  </div>
+
+                  {/* Floating Gesture overlay badge for remote Maya signer */}
+                  {pinnedParticipant === 1 && isRunning && remoteGesture.name !== "None" && (
+                    <div className="gesture-overlay-badge">
+                      <span className="gesture-overlay-icon">
+                        {SIGN_ICONS[remoteGesture.name] ?? "✋"}
+                      </span>
+                      <div className="gesture-overlay-divider" />
+                      <div className="gesture-overlay-info">
+                        <span className="gesture-overlay-label">AI Detected Sign (Maya)</span>
+                        <span className="gesture-overlay-value">{remoteGesture.name}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* FLOATING PARTICIPANTS OVERLAY IN CORNER */}
               <div className="floating-participants-overlay">
                 {PARTICIPANTS.map(p => (
-                  <div key={p.id} className="participant-call-chip">
+                  <div
+                    key={p.id}
+                    className={`participant-call-chip ${pinnedParticipant === p.id ? "pinned" : ""}`}
+                    onClick={() => setPinnedParticipant(p.id)}
+                    title={`Click to pin ${p.name}'s feed`}
+                    style={{ cursor: "pointer" }}
+                  >
                     <div className={`participant-chip-avatar ${p.initial.toLowerCase()}`}>{p.initial}</div>
                     <span className="participant-chip-name">{p.name}</span>
+                    {pinnedParticipant === p.id && (
+                      <span className="pinned-thumbtack-icon" style={{ marginLeft: 3, display: "flex", alignItems: "center" }}>
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" style={{ transform: "rotate(45deg)" }}>
+                          <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
+                        </svg>
+                      </span>
+                    )}
                     <span className={`participant-activity-dot ${p.activity.toLowerCase()}`} title={p.activity} />
                   </div>
                 ))}
@@ -985,18 +1146,36 @@ You are now ready to communicate. Position your hand clearly in front of the cam
             {/* Embedded Subtitle / Translation Bar */}
             <div className="translation-panel-embedded subtitle-mode">
               <div className="subtitle-content">
-                <span className="subtitle-speaker">AI Captionist</span>
+                <span className="subtitle-speaker">
+                  {pinnedParticipant === 3 ? "AI Captionist" : (pinnedParticipant === 1 ? "Maya S. (Sign)" : "Arjun K. (Voice)")}
+                </span>
                 <span className="subtitle-text">
-                  {gesture.name && gesture.name !== "None"
-                    ? `"${easyMode && EASY_MODE_TRANSLATIONS[gesture.name] ? EASY_MODE_TRANSLATIONS[gesture.name] : gesture.name}"`
-                    : '"Waiting for sign language..."'}
+                  {pinnedParticipant === 3 ? (
+                    gesture.name && gesture.name !== "None"
+                      ? `"${easyMode && EASY_MODE_TRANSLATIONS[gesture.name] ? EASY_MODE_TRANSLATIONS[gesture.name] : gesture.name}"`
+                      : '"Waiting for sign language..."'
+                  ) : pinnedParticipant === 1 ? (
+                    remoteGesture.name && remoteGesture.name !== "None"
+                      ? `"${easyMode && EASY_MODE_TRANSLATIONS[remoteGesture.name] ? EASY_MODE_TRANSLATIONS[remoteGesture.name] : remoteGesture.name}"`
+                      : '"Waiting for remote sign..."'
+                  ) : (
+                    remoteVoiceText ? `"${remoteVoiceText}"` : '"Waiting for remote voice..."'
+                  )}
                 </span>
               </div>
               <div className="subtitle-metrics">
-                <span className="subtitle-confidence" style={{ color: gesture.name && gesture.name !== "None" ? 'var(--teal-primary)' : 'var(--text-muted)' }}>
-                  {gesture.name && gesture.name !== "None" ? `${Math.round((gesture.confidence || 0.95) * 100)}% Match` : "95% accuracy"}
+                <span className="subtitle-confidence" style={{ color: (pinnedParticipant === 3 ? gesture.name !== "None" : pinnedParticipant === 1 ? remoteGesture.name !== "None" : remoteVoiceText) ? 'var(--teal-primary)' : 'var(--text-muted)' }}>
+                  {pinnedParticipant === 3 ? (
+                    gesture.name && gesture.name !== "None" ? `${Math.round((gesture.confidence || 0.95) * 100)}% Match` : "95% accuracy"
+                  ) : pinnedParticipant === 1 ? (
+                    remoteGesture.name && remoteGesture.name !== "None" ? `${Math.round((remoteGesture.confidence || 0.95) * 100)}% Match` : "92% accuracy"
+                  ) : (
+                    remoteVoiceText ? "99% speech confidence" : "98% accuracy"
+                  )}
                 </span>
-                <span className="subtitle-latency">28ms latency</span>
+                <span className="subtitle-latency">
+                  {pinnedParticipant === 3 ? "28ms latency" : (pinnedParticipant === 1 ? "45ms latency" : "12ms latency")}
+                </span>
               </div>
             </div>
           </div>
